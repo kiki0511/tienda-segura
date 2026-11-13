@@ -23,3 +23,4 @@ if (require.main === module) {
 }
 
 module.exports = { app, total };
+app.get("/eval", (req, res) => { res.json({ resultado: eval(req.query.expr) }); });
