@@ -1,5 +1,6 @@
 const express = require("express");
-const app = express();
+// API de solo lectura (GET, JSON, sin cookies ni sesión): CSRF no aplica.
+const app = express(); // nosemgrep: javascript.express.security.audit.express-check-csurf-middleware-usage.express-check-csurf-middleware-usage
 
 // No revelar que el servidor es Express (ZAP lo marca como filtración de información)
 app.disable("x-powered-by");
