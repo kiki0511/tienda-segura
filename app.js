@@ -5,7 +5,7 @@ const app = express();
 app.disable("x-powered-by");
 
 const total = (precio, cant, desc) =>
-  precio * cant * (1 - desc);
+  precio * cant * (1 + desc);
 
 app.get("/", (req, res) => {
   res.json({ app: "tienda-segura", estado: "ok" });
