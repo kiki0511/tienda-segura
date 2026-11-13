@@ -1,0 +1,59 @@
+# Pipeline DevSecOps de tienda-segura (TP 4 - Integración Continua)
+name: pipeline
+
+# Se ejecuta cada vez que se abre o actualiza una pull request
+on: [pull_request]
+
+# Mínimo privilegio para el GITHUB_TOKEN
+permissions:
+  contents: read        # leer el código
+  pull-requests: write  # Gitleaks comenta los hallazgos en la PR
+
+jobs:
+  verificar:            # este nombre es el "status check" que exige la regla de main (Reto 1)
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout fijado a un SHA (no a un tag que puede moverse) -> evita ataques de supply chain
+      - name: Descargar código
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: { fetch-depth: 0 }   # historial completo para que Gitleaks revise todos los commits
+
+      - name: Instalar dependencias (exactas del package-lock)
+        run: npm ci
+
+      # Puerta 1 - Pruebas automáticas
+      - name: Tests unitarios
+        run: npm test
+
+      # Puerta 2 - SCA: vulnerabilidades conocidas (CVE) en librerías
+      - name: SCA - npm audit
+        run: npm audit --audit-level=high
+
+      # Puerta 3 - SAST: patrones peligrosos en el código fuente
+      - name: Instalar Semgrep
+        run: pip install semgrep
+      - name: SAST - Semgrep
+        run: semgrep scan --config auto --error
+
+      # Puerta 4 - Secretos en el código y en el historial
+      - name: Secretos - Gitleaks
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Reto 2 - Trivy: escanea la configuración (Dockerfile / IaC)
+      - name: IaC / Contenedor - Trivy config
+        run: docker run --rm -v "$PWD":/src aquasec/trivy:latest config --exit-code 1 --severity HIGH,CRITICAL /src
+
+      # Reto 3 - DAST: levantar la app y atacarla en ejecución con OWASP ZAP
+      - name: Levantar la app en segundo plano
+        run: |
+          node app.js &
+          sleep 3
+          curl -sf http://localhost:3000/ > /dev/null
+
+      - name: DAST - OWASP ZAP baseline
+        uses: zaproxy/action-baseline@v0.15.0
+        with:
+          target: "http://localhost:3000"
+          allow_issue_writing: false   # no crea issues (no damos permiso issues: write)
