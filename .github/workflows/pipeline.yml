@@ -1,59 +1,65 @@
-# Pipeline DevSecOps de tienda-segura (TP 4 - Integración Continua)
-name: pipeline
+# ============================================================
+#  PIPELINE DevSecOps - tienda-segura (TP 4 Integración Continua)
+#  En cada pull request revisa que el código funcione y sea seguro.
+#  Si un paso falla, la PR queda en rojo y no entra a main.
+# ============================================================
 
-# Se ejecuta cada vez que se abre o actualiza una pull request
-on: [pull_request]
+name: pipeline                     # Nombre que se ve en la pestaña Actions
 
-# Mínimo privilegio para el GITHUB_TOKEN
-permissions:
-  contents: read        # leer el código
-  pull-requests: write  # Gitleaks comenta los hallazgos en la PR
+on: [pull_request]                 # CUÁNDO corre: en cada pull request (antes de entrar a main)
+
+permissions:                       # Permisos mínimos (principio de mínimo privilegio)
+  contents: read                   #   solo puede LEER el código
+  pull-requests: write             #   puede COMENTAR en la PR (lo usa Gitleaks)
 
 jobs:
-  verificar:            # este nombre es el "status check" que exige la regla de main (Reto 1)
-    runs-on: ubuntu-latest
-    steps:
-      # Checkout fijado a un SHA (no a un tag que puede moverse) -> evita ataques de supply chain
+  verificar:                       # Nombre del trabajo = el "check" que se ve en la PR
+    runs-on: ubuntu-latest         # GitHub crea una máquina Linux nueva para cada corrida
+    steps:                         # Los pasos corren EN ORDEN; si uno falla, se corta todo
+
+      # ---------- PREPARACIÓN ----------
+
       - name: Descargar código
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with: { fetch-depth: 0 }   # historial completo para que Gitleaks revise todos los commits
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262   # Fijado a SHA, no a tag: nadie lo puede cambiar (evita supply chain)
+        with: { fetch-depth: 0 }   # Baja TODO el historial (Gitleaks revisa todos los commits)
 
-      - name: Instalar dependencias (exactas del package-lock)
-        run: npm ci
+      - name: Instalar dependencias
+        run: npm ci                # Instala las versiones EXACTAS del package-lock (reproducible)
 
-      # Puerta 1 - Pruebas automáticas
+      # ---------- LAS 4 PUERTAS DEL TALLER ----------
+
       - name: Tests unitarios
-        run: npm test
+        run: npm test              # ¿FUNCIONA? Prueba que el descuento calcule bien
 
-      # Puerta 2 - SCA: vulnerabilidades conocidas (CVE) en librerías
       - name: SCA - npm audit
-        run: npm audit --audit-level=high
+        run: npm audit --audit-level=high      # ¿LIBRERÍAS seguras? Busca CVE altas o críticas
 
-      # Puerta 3 - SAST: patrones peligrosos en el código fuente
       - name: Instalar Semgrep
         run: pip install semgrep
       - name: SAST - Semgrep
-        run: semgrep scan --config auto --error
+        run: semgrep scan --config auto --error   # ¿CÓDIGO seguro? Lee el código sin ejecutarlo (ej: eval)
 
-      # Puerta 4 - Secretos en el código y en el historial
       - name: Secretos - Gitleaks
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7   # ¿Hay CONTRASEÑAS o TOKENS escritos?
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # Token automático de GitHub para comentar en la PR
 
-      # Reto 2 - Trivy: escanea la configuración (Dockerfile / IaC)
+      # ---------- RETO 2: CONTENEDOR ----------
+
       - name: IaC / Contenedor - Trivy config
         run: docker run --rm -v "$PWD":/src aquasec/trivy:latest config --exit-code 1 --severity HIGH,CRITICAL /src
+        # ¿El DOCKERFILE está bien armado? Falla si la app corre como root (se arregla con USER node)
 
-      # Reto 3 - DAST: levantar la app y atacarla en ejecución con OWASP ZAP
+      # ---------- RETO 3: ATACAR LA APP CORRIENDO ----------
+
       - name: Levantar la app en segundo plano
         run: |
-          node app.js &
-          sleep 3
-          curl -sf http://localhost:3000/ > /dev/null
+          node app.js &            # Arranca la app (el & la deja corriendo de fondo)
+          sleep 3                  # Espera 3 segundos a que levante
+          curl -sf http://localhost:3000/ > /dev/null   # Verifica que responde
 
       - name: DAST - OWASP ZAP baseline
-        uses: zaproxy/action-baseline@v0.15.0
+        uses: zaproxy/action-baseline@de8ad967d3548d44ef623df22cf95c3b0baf8b25   # v0.15.0, fijado a SHA
         with:
-          target: "http://localhost:3000"
-          allow_issue_writing: false   # no crea issues (no damos permiso issues: write)
+          target: "http://localhost:3000"   # ZAP ataca la app VIVA desde afuera, como un atacante
+          allow_issue_writing: false        # No crea issues en el repo (no le dimos ese permiso)
