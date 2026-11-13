@@ -29,3 +29,4 @@ node app.js       # http://localhost:3000/total?p=10&c=3  -> {"total":30}
 | `falla-test` | `(1 + desc)` en vez de `(1 - desc)` | npm test (esperaba 100, recibió 300) |
 
 La del secreto **no se arregla borrando la línea**: queda en el historial. Se cierra la PR sin fusionar, se borra la rama y en la vida real se revoca la clave.
+
